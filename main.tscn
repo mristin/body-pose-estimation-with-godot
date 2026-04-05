@@ -1,0 +1,24 @@
+[gd_scene format=3 uid="uid://2x3je7dannmy"]
+
+[ext_resource type="Script" uid="uid://ex6bokewmuqd" path="res://Main.cs" id="1_ig7tw"]
+[ext_resource type="PackedScene" uid="uid://cdhhj73m4drjv" path="res://ErgoSki/ergo_ski.tscn" id="2_0xm2m"]
+[ext_resource type="PackedScene" uid="uid://ir6i3vq61r3t" path="res://Speedometer/speedometer.tscn" id="3_h2yge"]
+
+[node name="Main" type="Node2D" unique_id=587971165]
+position = Vector2(1, 0)
+script = ExtResource("1_ig7tw")
+
+[node name="ErgoSki" parent="." unique_id=1182247016 instance=ExtResource("2_0xm2m")]
+position = Vector2(27, 388)
+
+[node name="SpeedometerALeft" parent="." unique_id=1162110223 instance=ExtResource("3_h2yge")]
+position = Vector2(72, 0)
+
+[node name="SpeedometerARight" parent="." unique_id=1509694417 instance=ExtResource("3_h2yge")]
+position = Vector2(187, 0)
+
+[node name="SpeedometerBLeft" parent="." unique_id=357113030 instance=ExtResource("3_h2yge")]
+position = Vector2(850, 0)
+
+[node name="SpeedometerBRight" parent="." unique_id=528694654 instance=ExtResource("3_h2yge")]
+position = Vector2(968, 0)

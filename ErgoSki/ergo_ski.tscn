@@ -1,0 +1,43 @@
+[gd_scene format=3 uid="uid://cdhhj73m4drjv"]
+
+[ext_resource type="Script" uid="uid://byrrwul03cwsw" path="res://ErgoSki/ErgoSki.cs" id="1_h88y8"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_h88y8"]
+bg_color = Color(0.96862745, 0, 0.9529412, 0)
+border_width_left = 8
+border_width_top = 8
+border_width_right = 8
+border_width_bottom = 8
+border_color = Color(1.92523e-07, 0.9302247, 0.777815, 1)
+
+[node name="ErgoSki" type="Node2D" unique_id=1182247016]
+script = ExtResource("1_h88y8")
+
+[node name="Panel" type="Panel" parent="." unique_id=1791703122]
+custom_minimum_size = Vector2(320, 240)
+anchors_preset = -1
+theme_override_styles/panel = SubResource("StyleBoxFlat_h88y8")
+
+[node name="CameraPort" type="TextureRect" parent="Panel" unique_id=1742405158]
+z_index = -1
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Status" type="Label" parent="Panel" unique_id=1201358319]
+layout_mode = 0
+offset_left = 52.0
+offset_top = 28.0
+offset_right = 147.0
+offset_bottom = 51.0
+text = "Setting up"
+
+[node name="Separator" type="Line2D" parent="Panel" unique_id=783699079]
+points = PackedVector2Array(170, 0, 170, 240)
+
+[node name="SetUpTimer" type="Timer" parent="." unique_id=486978692]
+one_shot = true
+autostart = true

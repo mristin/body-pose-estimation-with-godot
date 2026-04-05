@@ -1,0 +1,18 @@
+[gd_scene format=3 uid="uid://ir6i3vq61r3t"]
+
+[ext_resource type="Texture2D" uid="uid://bga84q6sjaa83" path="res://Speedometer/background.png" id="1_bbya6"]
+[ext_resource type="Script" uid="uid://bs64gj6go5bi7" path="res://Speedometer/Speedometer.cs" id="1_xlfy0"]
+
+[node name="Speedometer" type="Node2D" unique_id=1162110223]
+script = ExtResource("1_xlfy0")
+
+[node name="Background" type="TextureRect" parent="." unique_id=1291062562]
+offset_right = 100.0
+offset_bottom = 100.0
+texture = ExtResource("1_bbya6")
+expand_mode = 1
+
+[node name="Needle" type="Line2D" parent="." unique_id=630076011]
+points = PackedVector2Array(51, 48, 29, 72)
+begin_cap_mode = 2
+end_cap_mode = 2
