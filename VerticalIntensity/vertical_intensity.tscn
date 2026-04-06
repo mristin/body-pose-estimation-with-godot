@@ -1,0 +1,17 @@
+[gd_scene format=3 uid="uid://cw8s3d16gnqbx"]
+
+[ext_resource type="Script" uid="uid://b5dq8i77gqpnq" path="res://VerticalIntensity/VerticalIntensity.cs" id="1_dsvsk"]
+
+[node name="VerticalIntensity" type="Node2D" unique_id=304432974]
+script = ExtResource("1_dsvsk")
+
+[node name="Background" type="ColorRect" parent="." unique_id=1559987589]
+offset_right = 20.0
+offset_bottom = 140.0
+
+[node name="Indicator" type="ColorRect" parent="." unique_id=1944980993]
+offset_left = 5.0
+offset_top = 5.0
+offset_right = 15.0
+offset_bottom = 135.0
+color = Color(0, 0, 1, 1)

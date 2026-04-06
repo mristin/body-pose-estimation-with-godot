@@ -13,7 +13,7 @@ public partial class Fireball : Node2D
     private Line2D _trail = null!;
 
     private ErgoSkiing.CircularBuffer<Vector2> _positionHistory = (
-        new ErgoSkiing.CircularBuffer<Vector2>(50)
+        new ErgoSkiing.CircularBuffer<Vector2>(5)
     );
 
     public override void _Ready()

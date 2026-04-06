@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://ex6bokewmuqd" path="res://Main.cs" id="1_ig7tw"]
 [ext_resource type="PackedScene" uid="uid://cdhhj73m4drjv" path="res://ErgoSki/ergo_ski.tscn" id="2_0xm2m"]
 [ext_resource type="PackedScene" uid="uid://ir6i3vq61r3t" path="res://Speedometer/speedometer.tscn" id="3_h2yge"]
+[ext_resource type="PackedScene" uid="uid://cw8s3d16gnqbx" path="res://VerticalIntensity/vertical_intensity.tscn" id="4_1bvp3"]
 
 [node name="Main" type="Node2D" unique_id=587971165]
 position = Vector2(1, 0)
@@ -22,3 +23,19 @@ position = Vector2(850, 0)
 
 [node name="SpeedometerBRight" parent="." unique_id=528694654 instance=ExtResource("3_h2yge")]
 position = Vector2(968, 0)
+
+[node name="PositionALeft" parent="." unique_id=304432974 instance=ExtResource("4_1bvp3")]
+position = Vector2(115, 120)
+Color = Color(1, 0, 0, 1)
+
+[node name="PositionARight" parent="." unique_id=1987272441 instance=ExtResource("4_1bvp3")]
+position = Vector2(230, 120)
+Color = Color(1, 0, 0, 1)
+
+[node name="PositionBLeft" parent="." unique_id=391388956 instance=ExtResource("4_1bvp3")]
+position = Vector2(886, 120)
+Color = Color(0, 0.06666667, 1, 1)
+
+[node name="PositionBRight" parent="." unique_id=745210441 instance=ExtResource("4_1bvp3")]
+position = Vector2(1006, 120)
+Color = Color(0, 0, 1, 1)
