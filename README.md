@@ -4,7 +4,18 @@
 
 This is a simple demo code where we tried to get body pose estimation working in Godot.
 
-We used C# since we resort to ONNX runtime to run inference with [RTMO model].
+[![Screenshot](https://github.com/mristin/body-pose-estimation-with-godot/raw/main/screenshot.png)](https://youtu.be/2Ju0RFVwm-s)
+
+The demo already includes inertia for having stable speed in case you want to make ergo skiing games.
+There is also a rudimentary symbol recognition based on the hand pose.
+
+We used C# since we resort to ONNX runtime to run model inference.
+
+The body pose recognition code is encapsulated in [ErgoSki/](ErgoSki/) scene which you can readily copy to your project and use.
+
+## Acknowledgments
+
+We used [RTMO-t model].
 
 [RTMO model]: https://github.com/open-mmlab/mmpose/tree/main/projects/rtmo
 
