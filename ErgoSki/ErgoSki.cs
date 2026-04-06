@@ -451,11 +451,34 @@ namespace ErgoSkiing
 
 public partial class ErgoSki : Node2D
 {
+    /// <summary>Signal that the player moved the hand.</summary>
+    /// <remarks>
+    /// <para>The position lives roughly in [0, 1].</para>
+    ///
+    /// <para>
+    /// If the position is not available, it is given as NaN.
+    /// </para>
+    /// </remarks>
+    [Signal]
+    public delegate void PlayerPositionUpdatedEventHandler(
+        string player,
+        string hand,
+        float normalizedPosition
+    );
+
+    /// <summary>Signal that the player's speed changed.</summary>
+    /// <remarks>
+    /// <para>The speed lives roughly in [0, 1].</para>
+    ///
+    /// <para>
+    /// If the hand could not be detected, speed is set to 0.0f.
+    /// </para>
+    /// </remarks>
     [Signal]
     public delegate void PlayerSpeedUpdatedEventHandler(
         string player,
-        string hand, float
-        normalizedSpeed
+        string hand,
+        float normalizedSpeed
     );
 
     private Label? _status;
@@ -471,6 +494,20 @@ public partial class ErgoSki : Node2D
     private InferenceSession? _inferenceSession;
     private readonly object _latestInferenceLock = new object();
     private ErgoSkiing.Impl.Inference? _latestInference;
+
+    // NOTE (mristin):
+    // We hard-code these to match the body pose estimation model.
+    // See: https://github.com/open-mmlab/mmpose/tree/main/projects/rtmo
+    private const int _inputWidth = 416;
+    private const int _inputHeight = 416;
+
+    // NOTE (mristin):
+    // We pre-allocate buffers and images to avoid garbage collection pressure.
+    private float[]? _inputDataBuffer;
+    private DenseTensor<float>? _inputTensorBuffer;
+
+    private Image? _resizedDisplayImage;
+    private Image? _resizedInputImage;
 
     private const float _keypointScoreThreshold = 0.8f;
 
@@ -491,6 +528,13 @@ public partial class ErgoSki : Node2D
     );
     private ErgoSkiing.Impl.Smoother _playerBRightSmoother = (
         new ErgoSkiing.Impl.Smoother()
+    );
+
+    private readonly Dictionary<
+        (string player, string hand),
+        float?
+    > _lastEmittedPositions = (
+        new Dictionary<(string, string), float?>()
     );
 
     private readonly Dictionary<
@@ -637,6 +681,25 @@ public partial class ErgoSki : Node2D
 
             _inferenceSession = new InferenceSession(data);
 
+            // NOTE (mristin):
+            // We pre-allocate the buffers and images to avoid the GC pressure.
+
+            _inputDataBuffer = new float[1 * 3 * _inputHeight * _inputWidth];
+            _inputTensorBuffer = new DenseTensor<float>(
+                _inputDataBuffer,
+                new[] { 1, 3, _inputHeight, _inputWidth }
+            );
+
+            // NOTE (mristin):
+            // We will resize this image later as necessary.
+            _resizedDisplayImage = Image.CreateEmpty(
+                1, 1, false, Image.Format.Rgb8
+            );
+
+            _resizedInputImage = Image.CreateEmpty(
+                _inputWidth, _inputHeight, false, Image.Format.Rgb8
+            );
+
             GD.Print("Inference session created.");
         }
 
@@ -664,6 +727,104 @@ public partial class ErgoSki : Node2D
         _inferenceSession = null;
     }
 
+    /// <summary>
+    /// Resize and flip an image in a single pass, writing directly to
+    /// the target buffer.
+    /// </summary>
+    /// <param name="sourceImage">Source image to resize and flip</param>
+    /// <param name="targetImage">Pre-allocated target image buffer</param>
+    private static void ResizeAndFlipInPlace(Image sourceImage, Image targetImage)
+    {
+        if (sourceImage.GetFormat() != Image.Format.Rgb8)
+        {
+            throw new InvalidOperationException("Source image must be in RGB8 format");
+        }
+
+        Vector2I sourceSize = sourceImage.GetSize();
+        if (sourceSize.X == 0 || sourceSize.Y == 0)
+        {
+            throw new InvalidOperationException(
+                $"Source image must not be empty, but got size {sourceSize}"
+            );
+        }
+
+        if (targetImage.GetFormat() != Image.Format.Rgb8)
+        {
+            throw new InvalidOperationException("Target image must be in RGB8 format");
+        }
+
+        Vector2I targetSize = targetImage.GetSize();
+        if (targetSize.X <= 0 || targetSize.Y <= 0)
+        {
+            throw new InvalidOperationException(
+                "Target image dimensions must be greater than zero"
+            );
+        }
+
+        byte[] sourceData = sourceImage.GetData();
+
+        byte[] targetData = targetImage.GetData();
+
+        int targetWidth = targetSize.X;
+        int targetHeight = targetSize.Y;
+
+        float scaleX = (float)sourceSize.X / targetWidth;
+        float scaleY = (float)sourceSize.Y / targetHeight;
+
+        for (int y = 0; y < targetHeight; y++)
+        {
+            for (int x = 0; x < targetWidth; x++)
+            {
+                // Map to source coordinates
+                float srcX = x * scaleX;
+                float srcY = y * scaleY;
+
+                // Bilinear interpolation coordinates
+                int x0 = (int)srcX;
+                int y0 = (int)srcY;
+                int x1 = Math.Min(x0 + 1, sourceSize.X - 1);
+                int y1 = Math.Min(y0 + 1, sourceSize.Y - 1);
+
+                float fx = srcX - x0;
+                float fy = srcY - y0;
+
+                // Sample four neighboring pixels
+                int idx00 = (y0 * sourceSize.X + x0) * 3;
+                int idx01 = (y0 * sourceSize.X + x1) * 3;
+                int idx10 = (y1 * sourceSize.X + x0) * 3;
+                int idx11 = (y1 * sourceSize.X + x1) * 3;
+
+                // Flip X coordinate for output
+                int flippedX = targetWidth - 1 - x;
+                int targetIdx = (y * targetWidth + flippedX) * 3;
+
+                // Bilinear interpolation for each color channel
+                for (int c = 0; c < 3; c++)
+                {
+                    float p00 = sourceData[idx00 + c];
+                    float p01 = sourceData[idx01 + c];
+                    float p10 = sourceData[idx10 + c];
+                    float p11 = sourceData[idx11 + c];
+
+                    float p0 = p00 * (1 - fx) + p01 * fx;
+                    float p1 = p10 * (1 - fx) + p11 * fx;
+                    float p = p0 * (1 - fy) + p1 * fy;
+
+                    // NOTE (mristin):
+                    // (int)(p + 0.5f) is an optimization to Mathf.Round.
+                    targetData[targetIdx + c] = (byte)(int)(p + 0.5f);
+                }
+            }
+        }
+
+        targetImage.SetData(
+            targetSize.X,
+            targetSize.Y,
+            false,
+            Image.Format.Rgb8,
+            targetData
+        );
+    }
 
     private void OnFrameChanged()
     {
@@ -674,34 +835,35 @@ public partial class ErgoSki : Node2D
             return;
         }
 
-        Image duplicate = (Image)image.Duplicate();
-        duplicate.FlipX();
-
         lock (_latestFrameLock)
         {
-            _latestFrame = duplicate;
+            _latestFrame = image;
         }
 
         // NOTE (mristin):
         // We have to be robust to 0x0 camera port so we only update the image
         // if it is not empty.
         Vector2I targetSize = (Vector2I)_cameraPort!.Size;
-        if (targetSize.X > 0 || targetSize.Y > 0)
+        if (targetSize.X > 0 && targetSize.Y > 0)
         {
-            Image resizedImage = (Image)duplicate.Duplicate();
-            resizedImage.Resize(
-                targetSize.X,
-                targetSize.Y,
-                Image.Interpolation.Lanczos
-            );
+            // NOTE (mristin):
+            // We re-use the pre-allocated image for performance.
+            if (_resizedDisplayImage!.GetSize() != targetSize)
+            {
+                _resizedDisplayImage = Image.CreateEmpty(
+                    targetSize.X, targetSize.Y, false, Image.Format.Rgb8
+                );
+            }
+
+            ResizeAndFlipInPlace(image, _resizedDisplayImage);
 
             if (_processedTexture!.GetWidth() == 0)
             {
-                _processedTexture.SetImage(resizedImage);
+                _processedTexture.SetImage(_resizedDisplayImage);
             }
             else
             {
-                _processedTexture.Update(resizedImage);
+                _processedTexture.Update(_resizedDisplayImage);
             }
         }
     }
@@ -727,46 +889,43 @@ public partial class ErgoSki : Node2D
                 continue;
             }
 
-            // NOTE (mristin):
-            // See the input size and normalization at:
-            // * https://github.com/open-mmlab/mmpose/tree/main/projects/rtmo
-
-            int inputWidth = 416;
-            int inputHeight = 416;
-            Image resizedImage = (Image)frame.Duplicate();
-            resizedImage.Resize(inputWidth, inputHeight, Image.Interpolation.Lanczos);
-            resizedImage.Convert(Image.Format.Rgb8);
-
-            float[] inputData = new float[1 * 3 * inputHeight * inputWidth];
-
-            int idxR = 0;
-            int idxG = inputHeight * inputWidth;
-            int idxB = 2 * inputHeight * inputWidth;
-
-            // NOTE (mristin):
-            // RTMO expects simple 0-255 range without ImageNet normalization
-            // (YOLO-based models often don't use ImageNet stats)
-            for (int y = 0; y < inputHeight; y++)
+            if (_resizedInputImage == null)
             {
-                for (int x = 0; x < inputWidth; x++)
-                {
-                    Color pixel = resizedImage.GetPixel(x, y);
-
-                    // Convert from Godot's [0,1] to [0,255] range without normalization
-                    inputData[idxR] = pixel.R * 255.0f;
-                    inputData[idxG] = pixel.G * 255.0f;
-                    inputData[idxB] = pixel.B * 255.0f;
-
-                    idxR++;
-                    idxG++;
-                    idxB++;
-                }
+                throw new InvalidOperationException(
+                    "Expected the resized input image to have been pre-allocated, " +
+                    "but _resizedInputImage is null."
+                );
             }
 
-            var tensor = new DenseTensor<float>(
-                inputData,
-                new[] { 1, 3, inputHeight, inputWidth }
-            );
+            ResizeAndFlipInPlace(frame, _resizedInputImage);
+
+            // NOTE (mristin):
+            // We use bulk pixel data extraction instead of GetPixel() for performance.
+            // RTMO expects simple 0-255 range without normalization.
+            byte[] pixelData = _resizedInputImage.GetData();
+
+            int pixelCount = _inputWidth * _inputHeight;
+            int rOffset = 0;
+            int gOffset = pixelCount;
+            int bOffset = 2 * pixelCount;
+
+            // NOTE (mristin):
+            // We convert from RGB8 format (3 bytes per pixel) to planar float format.
+            for (int i = 0; i < pixelCount; i++)
+            {
+                int pixelIndex = i * 3; // RGB8 has 3 bytes per pixel.
+
+                // NOTE (mristin):
+                // While GetPixel gives [0,1], GetData() already gives us [0, 255] so
+                // no normalization is necessary.
+
+                _inputDataBuffer![rOffset + i] = pixelData[pixelIndex];     // R
+                _inputDataBuffer![gOffset + i] = pixelData[pixelIndex + 1]; // G
+                _inputDataBuffer![bOffset + i] = pixelData[pixelIndex + 2]; // B
+            }
+
+            // NOTE (mristin):
+            // We reuse the pre-allocated tensor buffer instead of creating a new one.
 
             //// NOTE (mristin):
             //// We pick the input name dynamically to be more robust to model
@@ -775,7 +934,7 @@ public partial class ErgoSki : Node2D
 
             var inputs = new List<NamedOnnxValue>
             {
-                NamedOnnxValue.CreateFromTensor(inputName, tensor)
+                NamedOnnxValue.CreateFromTensor(inputName, _inputTensorBuffer!)
             };
 
             using var results = _inferenceSession.Run(inputs);
@@ -818,8 +977,8 @@ public partial class ErgoSki : Node2D
 
                 for (int k = 0; k < numKeypoints; k++)
                 {
-                    float x = output[0, p, k, 0] / (float)inputWidth;
-                    float y = output[0, p, k, 1] / (float)inputHeight;
+                    float x = output[0, p, k, 0] / (float)_inputWidth;
+                    float y = output[0, p, k, 1] / (float)_inputHeight;
                     float score = output[0, p, k, 2];
 
                     if (score > _keypointScoreThreshold)
@@ -981,6 +1140,28 @@ public partial class ErgoSki : Node2D
             }
 
             var key = (player, hand);
+
+            float? normalizedPosition = smoothedPosition?.Y;
+
+            if (
+                !_lastEmittedPositions.TryGetValue(key, out var lastPosition)
+                || (lastPosition != null) ^ (normalizedPosition != null)
+                || (
+                    lastPosition != null
+                    && normalizedPosition != null
+                    && Math.Abs(lastPosition.Value - normalizedPosition.Value) > 0.001f
+                )
+            )
+            {
+                _lastEmittedPositions[key] = normalizedPosition;
+                EmitSignal(
+                    SignalName.PlayerPositionUpdated,
+                    player,
+                    hand,
+                    normalizedPosition ?? float.NaN
+                );
+            }
+
             if (
                 !_lastEmittedSpeeds.TryGetValue(key, out var lastSpeed)
                 || Math.Abs(lastSpeed - speed) > 0.001f

@@ -11,10 +11,22 @@ public partial class Main : Node2D
     private Speedometer? _speedometerBLeft;
     private Speedometer? _speedometerBRight;
 
+    private VerticalIntensity? _positionALeft;
+    private VerticalIntensity? _positionARight;
+    private VerticalIntensity? _positionBLeft;
+    private VerticalIntensity? _positionBRight;
+
+
     public override void _Ready()
     {
         _ergoSki = GetNode<ErgoSki>("ErgoSki");
+        _ergoSki.PlayerPositionUpdated += OnPlayerPositionUpdated;
         _ergoSki.PlayerSpeedUpdated += OnPlayerSpeedUpdated;
+
+        _positionALeft = GetNode<VerticalIntensity>("PositionALeft");
+        _positionARight = GetNode<VerticalIntensity>("PositionARight");
+        _positionBLeft = GetNode<VerticalIntensity>("PositionBLeft");
+        _positionBRight = GetNode<VerticalIntensity>("PositionBRight");
 
         _speedometerALeft = GetNode<Speedometer>("SpeedometerALeft");
         _speedometerARight = GetNode<Speedometer>("SpeedometerARight");
@@ -57,5 +69,46 @@ public partial class Main : Node2D
         }
 
         speedometer.SetNeedle(normalizedSpeed);
+    }
+
+    private void OnPlayerPositionUpdated(
+        string player,
+        string hand,
+        float normalizedPosition
+    )
+    {
+        VerticalIntensity? verticalIntensity = null;
+
+        if (player == ErgoSkiing.Player.A && hand == ErgoSkiing.Hand.Left)
+        {
+            verticalIntensity = _positionALeft;
+        }
+        else if (player == ErgoSkiing.Player.A && hand == ErgoSkiing.Hand.Right)
+        {
+            verticalIntensity = _positionARight;
+        }
+        else if (player == ErgoSkiing.Player.B && hand == ErgoSkiing.Hand.Left)
+        {
+            verticalIntensity = _positionBLeft;
+        }
+        else if (player == ErgoSkiing.Player.B && hand == ErgoSkiing.Hand.Right)
+        {
+            verticalIntensity = _positionBRight;
+        }
+        else
+        {
+            throw new ArgumentException(
+                $"Unknown player '{player}' or hand '{hand}'"
+            );
+        }
+
+        if (verticalIntensity == null)
+        {
+            throw new InvalidOperationException(
+                $"VerticalIntensity for player {player} {hand} is not initialized"
+            );
+        }
+
+        verticalIntensity.Set(normalizedPosition);
     }
 }

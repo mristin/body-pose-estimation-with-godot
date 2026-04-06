@@ -19,6 +19,11 @@ config/icon="res://icon.svg"
 
 project/assembly_name="BodyPoseEstimationWithGodot"
 
+[editor]
+
+movie_writer/movie_file="/home/marko/Desktop/body-pose-estimation-with-godot-demo.avi"
+movie_writer/fps=25
+
 [physics]
 
 3d/physics_engine="Jolt Physics"
