@@ -26,19 +26,19 @@ public partial class Main : Node2D
     {
         Speedometer? speedometer = null;
 
-        if (player == "A" && hand == "Left")
+        if (player == ErgoSkiing.Player.A && hand == ErgoSkiing.Hand.Left)
         {
             speedometer = _speedometerALeft;
         }
-        else if (player == "A" && hand == "Right")
+        else if (player == ErgoSkiing.Player.A && hand == ErgoSkiing.Hand.Right)
         {
             speedometer = _speedometerARight;
         }
-        else if (player == "B" && hand == "Left")
+        else if (player == ErgoSkiing.Player.B && hand == ErgoSkiing.Hand.Left)
         {
             speedometer = _speedometerBLeft;
         }
-        else if (player == "B" && hand == "Right")
+        else if (player == ErgoSkiing.Player.B && hand == ErgoSkiing.Hand.Right)
         {
             speedometer = _speedometerBRight;
         }
