@@ -1,6 +1,6 @@
 # body-pose-estimation-with-godot
 
-[![CI](https://github.com/mristin/body-pose-estimation-with-godot/actions/workflows/ci.yml/badge.svg)](https://github.com/mristin/body-pose-estimation-with-godot/actions/workflows/ci.yml)
+[![Continuous integration](https://github.com/mristin/body-pose-estimation-with-godot/actions/workflows/ci.yaml/badge.svg)](https://github.com/mristin/body-pose-estimation-with-godot/actions/workflows/ci.yaml)
 
 This is a simple demo code where we tried to get body pose estimation working in Godot.
 
