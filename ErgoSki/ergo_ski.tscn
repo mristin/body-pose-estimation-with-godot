@@ -41,3 +41,25 @@ points = PackedVector2Array(170, 0, 170, 240)
 [node name="SetUpTimer" type="Timer" parent="." unique_id=486978692]
 one_shot = true
 autostart = true
+
+[node name="SymbolA" type="Label" parent="." unique_id=350253779]
+visible = false
+offset_left = 30.0
+offset_top = 80.0
+offset_right = 140.0
+offset_bottom = 217.0
+theme_override_font_sizes/font_size = 100
+text = "A"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SymbolB" type="Label" parent="." unique_id=16046437]
+visible = false
+offset_left = 190.0
+offset_top = 80.0
+offset_right = 300.0
+offset_bottom = 220.0
+theme_override_font_sizes/font_size = 100
+text = "B"
+horizontal_alignment = 1
+vertical_alignment = 1

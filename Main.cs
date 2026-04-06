@@ -16,12 +16,12 @@ public partial class Main : Node2D
     private VerticalIntensity? _positionBLeft;
     private VerticalIntensity? _positionBRight;
 
+    private TextEdit? _textA;
+    private TextEdit? _textB;
 
     public override void _Ready()
     {
         _ergoSki = GetNode<ErgoSki>("ErgoSki");
-        _ergoSki.PlayerPositionUpdated += OnPlayerPositionUpdated;
-        _ergoSki.PlayerSpeedUpdated += OnPlayerSpeedUpdated;
 
         _positionALeft = GetNode<VerticalIntensity>("PositionALeft");
         _positionARight = GetNode<VerticalIntensity>("PositionARight");
@@ -32,6 +32,14 @@ public partial class Main : Node2D
         _speedometerARight = GetNode<Speedometer>("SpeedometerARight");
         _speedometerBLeft = GetNode<Speedometer>("SpeedometerBLeft");
         _speedometerBRight = GetNode<Speedometer>("SpeedometerBRight");
+
+        _textA = GetNode<TextEdit>("TextA");
+        _textB = GetNode<TextEdit>("TextB");
+
+        _ergoSki.PlayerPositionUpdated += OnPlayerPositionUpdated;
+        _ergoSki.PlayerSpeedUpdated += OnPlayerSpeedUpdated;
+        _ergoSki.PlayerSymbolEmitted += OnPlayerSymbolEmitted;
+        _ergoSki.StartTrackingSymbols();
     }
 
     private void OnPlayerSpeedUpdated(string player, string hand, float normalizedSpeed)
@@ -110,5 +118,32 @@ public partial class Main : Node2D
         }
 
         verticalIntensity.Set(normalizedPosition);
+    }
+
+    public void OnPlayerSymbolEmitted(string player, string symbol)
+    {
+        TextEdit? textEdit = null;
+
+        if (player == ErgoSkiing.Player.A)
+        {
+            textEdit = _textA;
+        }
+        else if (player == ErgoSkiing.Player.B)
+        {
+            textEdit = _textB;
+        }
+        else
+        {
+            throw new ArgumentException($"Unknown player '{player}'");
+        }
+
+        if (textEdit == null)
+        {
+            throw new InvalidOperationException(
+                $"TextEdit for player {player} is not initialized"
+            );
+        }
+
+        textEdit.Text += symbol;
     }
 }

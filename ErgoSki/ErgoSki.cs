@@ -22,6 +22,16 @@ namespace ErgoSkiing
         public const string Right = "Right";
     }
 
+    public static class Symbol
+    {
+        public const string A = "A";
+        public const string Y = "Y";
+        public const string N = "N";
+        public const string T = "T";
+        public const string L = "L";
+        public const string K = "K";
+        public const string EMPTY = "";
+    }
 
     namespace Impl
     {
@@ -295,6 +305,19 @@ namespace ErgoSkiing
             }
         }
 
+        /// <summary>Represent a symbol observation with timestamp.</summary>
+        public class TimestampedSymbol
+        {
+            public float Time { get; }
+            public string Symbol { get; }
+
+            public TimestampedSymbol(float time, string symbol)
+            {
+                Time = time;
+                Symbol = symbol;
+            }
+        }
+
         public class InertialVelocity
         {
             private float _v;
@@ -445,6 +468,181 @@ namespace ErgoSkiing
             }
         }
 
+        /// <summary>
+        /// Track hand positions over a period of time and emit a symbol if the pose is
+        /// consistent.
+        /// </summary>
+        public class SymbolTracker
+        {
+            public delegate void SymbolEventHandler(
+                string symbol
+            );
+
+            // If there are enough observations, the symbol candidate will be set.
+            public string? Symbol = null;
+            public float? Dominance = null;
+
+            private CircularBuffer<TimestampedSymbol> _observations = (
+                // NOTE (mristin):
+                // We assume here 120 FPS * 4 seconds.
+                new CircularBuffer<TimestampedSymbol>(120 * 4)
+            );
+            private float _currentTime = 0.0f;
+
+            private const float _minObservationThreshold = 1.0f; // in seconds
+
+            private const float _observationThreshold = 3.0f;  // in seconds
+
+            public SymbolEventHandler? OnSymbolDetected;
+
+            public SymbolTracker(
+                SymbolEventHandler? symbolHandler = null
+            )
+            {
+                OnSymbolDetected = symbolHandler;
+            }
+
+            private bool _running = false;
+
+            public void Start()
+            {
+                _running = true;
+                _observations.Clear();
+            }
+
+            public void Stop()
+            {
+                _running = false;
+                _observations.Clear();
+            }
+
+            public void Update(float? leftHand, float? rightHand, float delta)
+            {
+                _currentTime += delta;
+
+                Symbol = null;
+                Dominance = null;
+
+                if (!_running)
+                {
+                    return;
+                }
+
+                // NOTE (mristin):
+                // We reset observations if the last observation is too old.
+                if (_observations.Count > 0)
+                {
+                    var lastObservation = _observations[_observations.Count - 1];
+                    if (_currentTime - lastObservation.Time > _observationThreshold)
+                    {
+                        _observations.Clear();
+                    }
+                }
+
+                if (!leftHand.HasValue || !rightHand.HasValue)
+                {
+                    return;
+                }
+
+                string newSymbol = RecognizeSymbol(leftHand.Value, rightHand.Value);
+
+                _observations.Add(new TimestampedSymbol(_currentTime, newSymbol));
+
+                var firstObservation = _observations[0];
+                if (_currentTime - firstObservation.Time >= _minObservationThreshold)
+                {
+                    var histo = new Dictionary<string, int>();
+                    var count = 0;
+
+                    bool observedLongEnoughForEmission = false;
+
+                    for (int i = _observations.Count - 1; i >= 0; i--)
+                    {
+                        var observation = _observations[i];
+                        if (_currentTime - observation.Time > _observationThreshold)
+                        {
+                            observedLongEnoughForEmission = true;
+                            break;
+                        }
+
+                        histo[observation.Symbol] = (
+                            histo.GetValueOrDefault(observation.Symbol, 0) + 1
+                        );
+                        count++;
+                    }
+
+                    string? bestSymbol = null;
+                    int bestCount = 0;
+
+                    foreach (var kvp in histo)
+                    {
+                        if (kvp.Value > bestCount)
+                        {
+                            bestSymbol = kvp.Key;
+                            bestCount = kvp.Value;
+                        }
+                    }
+
+                    if (bestSymbol == null)
+                    {
+                        throw new InvalidOperationException(
+                            "Unexpected bestSymbol not set when the histo not be empty"
+                        );
+                    }
+
+                    float dominance = (float)bestCount / (float)count;
+
+                    this.Symbol = bestSymbol;
+                    this.Dominance = dominance;
+
+                    if (observedLongEnoughForEmission && dominance >= 0.9f)
+                    {
+                        OnSymbolDetected?.Invoke(bestSymbol);
+                        _observations.Clear();
+                    }
+                }
+            }
+
+            private string RecognizeSymbol(float leftHand, float rightHand)
+            {
+                if (leftHand > 0.7f && rightHand > 0.7f)
+                {
+                    return ErgoSkiing.Symbol.A;
+                }
+
+                if (leftHand < 0.3f && rightHand < 0.3f)
+                {
+                    return ErgoSkiing.Symbol.Y;
+                }
+
+                if (leftHand < 0.3f && rightHand > 0.7f)
+                {
+                    return ErgoSkiing.Symbol.N;
+                }
+
+                if (
+                    leftHand >= 0.4f && leftHand <= 0.6f
+                    && rightHand >= 0.4f && rightHand <= 0.6f
+                )
+                {
+                    return ErgoSkiing.Symbol.T;
+                }
+
+                if (leftHand < 0.3f && rightHand >= 0.4f && rightHand <= 0.6f)
+                {
+                    return ErgoSkiing.Symbol.L;
+                }
+
+                if (leftHand > 0.7f && rightHand < 0.3f)
+                {
+                    return ErgoSkiing.Symbol.K;
+                }
+
+                // No recognized symbol
+                return ErgoSkiing.Symbol.EMPTY;
+            }
+        }
+
     }  // namespace Impl
 
 }  // namespace ErgoSkiing
@@ -479,6 +677,12 @@ public partial class ErgoSki : Node2D
         string player,
         string hand,
         float normalizedSpeed
+    );
+
+    [Signal]
+    public delegate void PlayerSymbolEmittedEventHandler(
+        string player,
+        string symbol
     );
 
     private Label? _status;
@@ -544,6 +748,24 @@ public partial class ErgoSki : Node2D
         new Dictionary<(string, string), float>()
     );
 
+    private ErgoSkiing.Impl.SymbolTracker _playerASymbolTracker = null!;
+    private ErgoSkiing.Impl.SymbolTracker _playerBSymbolTracker = null!;
+
+    private Label _playerASymbolLabel = null!;
+    private Label _playerBSymbolLabel = null!;
+
+    public void StartTrackingSymbols()
+    {
+        _playerASymbolTracker.Start();
+        _playerBSymbolTracker.Start();
+    }
+
+    public void StopTrackingSymbols()
+    {
+        _playerASymbolTracker.Stop();
+        _playerBSymbolTracker.Stop();
+    }
+
     public override void _Ready()
     {
         GetNode<Line2D>("Panel/Separator").Visible = false;
@@ -591,6 +813,24 @@ public partial class ErgoSki : Node2D
             playerBColor
         );
         AddChild(_playerBFireballRight);
+
+        _playerASymbolLabel = GetNode<Label>("SymbolA");
+        _playerBSymbolLabel = GetNode<Label>("SymbolB");
+
+        _playerASymbolTracker = new ErgoSkiing.Impl.SymbolTracker(
+            symbol => EmitSignal(
+                SignalName.PlayerSymbolEmitted,
+                ErgoSkiing.Player.A,
+                symbol
+            )
+        );
+        _playerBSymbolTracker = new ErgoSkiing.Impl.SymbolTracker(
+            symbol => EmitSignal(
+                SignalName.PlayerSymbolEmitted,
+                ErgoSkiing.Player.B,
+                symbol
+            )
+        );
 
         GD.Print("_Ready done.");
     }
@@ -1098,7 +1338,6 @@ public partial class ErgoSki : Node2D
             }
         )
         {
-
             if (keypointPosition.HasValue)
             {
                 smoother.Observe(keypointPosition.Value, (float)delta);
@@ -1141,7 +1380,12 @@ public partial class ErgoSki : Node2D
 
             var key = (player, hand);
 
-            float? normalizedPosition = smoothedPosition?.Y;
+            float? normalizedPosition = (smoothedPosition == null)
+                ? null
+                // NOTE (mristin):
+                // We invert since the smoothed position lives in the image coordinates
+                // which start from the top-left corner.
+                : 1.0f - smoothedPosition.Value.Y;
 
             if (
                 !_lastEmittedPositions.TryGetValue(key, out var lastPosition)
@@ -1149,7 +1393,7 @@ public partial class ErgoSki : Node2D
                 || (
                     lastPosition != null
                     && normalizedPosition != null
-                    && Math.Abs(lastPosition.Value - normalizedPosition.Value) > 0.001f
+                    && Mathf.Abs(lastPosition.Value - normalizedPosition.Value) > 0.001f
                 )
             )
             {
@@ -1174,6 +1418,55 @@ public partial class ErgoSki : Node2D
                     hand,
                     speed
                 );
+            }
+        }
+
+        foreach (
+            var (
+                leftSmoother,
+                rightSmoother,
+                tracker,
+                symbolLabel
+            ) in new (
+                ErgoSkiing.Impl.Smoother,
+                ErgoSkiing.Impl.Smoother,
+                ErgoSkiing.Impl.SymbolTracker,
+                Label
+            )[]
+            {
+                (
+                    _playerALeftSmoother,
+                    _playerARightSmoother,
+                    _playerASymbolTracker,
+                    _playerASymbolLabel
+                ),
+                (
+                    _playerBLeftSmoother,
+                    _playerBRightSmoother,
+                    _playerBSymbolTracker,
+                    _playerBSymbolLabel
+                )
+            }
+        )
+        {
+            var leftY = leftSmoother.Get().position?.Y;
+            var rightY = rightSmoother.Get().position?.Y;
+
+            tracker.Update(leftY, rightY, (float)delta);
+
+            if (tracker.Symbol != null && tracker.Dominance.HasValue)
+            {
+                symbolLabel.Text = tracker.Symbol;
+                symbolLabel.Modulate = new Color(
+                    1.0f, 1.0f, 1.0f, tracker.Dominance.Value
+                );
+                symbolLabel.Visible = true;
+            }
+            else
+            {
+                symbolLabel.Text = "";
+                symbolLabel.Modulate = new Color(1.0f, 1.0f, 1.0f, 0.0f);
+                symbolLabel.Visible = false;
             }
         }
     }
