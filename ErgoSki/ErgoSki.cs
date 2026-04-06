@@ -7,425 +7,456 @@ using System.Linq;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 
-/// <summary>Enumerate COCO 17 keypoints.</summary>
-public enum KeypointIndex
+namespace ErgoSkiing
 {
-    Nose = 0,
-    LeftEye = 1,
-    RightEye = 2,
-    LeftEar = 3,
-    RightEar = 4,
-    LeftShoulder = 5,
-    RightShoulder = 6,
-    LeftElbow = 7,
-    RightElbow = 8,
-    LeftWrist = 9,
-    RightWrist = 10,
-    LeftHip = 11,
-    RightHip = 12,
-    LeftKnee = 13,
-    RightKnee = 14,
-    LeftAnkle = 15,
-    RightAnkle = 16
-}
 
-public static class Player
-{
-    public const string A = "A";
-    public const string B = "B";
-}
-
-public static class Hand
-{
-    public const string Left = "Left";
-    public const string Right = "Right";
-}
-
-/// <summary>Capture a single body keypoint.</summary>
-public class Keypoint
-{
-    public float X;
-    public float Y;
-    public float Score;
-
-    public Keypoint(float x, float y, float score)
+    public static class Player
     {
-        X = x;
-        Y = y;
-        Score = score;
-    }
-}
-
-/// <summary>Represent a body pose of a person.</summary>
-public class Pose
-{
-    public Keypoint[] Keypoints;
-
-    public Pose(Keypoint[] keypoints)
-    {
-        Keypoints = keypoints;
+        public const string A = "A";
+        public const string B = "B";
     }
 
-    public (Vector2?, Vector2?) MaybeLeftRightHandPositions(
-        float keypointScoreThreshold
-    )
+    public static class Hand
     {
-        Vector2? leftHandPosition = null;
-        Vector2? rightHandPosition = null;
+        public const string Left = "Left";
+        public const string Right = "Right";
+    }
 
-        // We use the inverted keypoint index since the image is flipped.
-        var leftHand = Keypoints[(int)KeypointIndex.RightWrist];
 
-        if (leftHand.Score > keypointScoreThreshold)
+    namespace Impl
+    {
+
+        /// <summary>Enumerate COCO 17 keypoints.</summary>
+        public enum KeypointIndex
         {
-            leftHandPosition = new Vector2(leftHand.X, leftHand.Y);
+            Nose = 0,
+            LeftEye = 1,
+            RightEye = 2,
+            LeftEar = 3,
+            RightEar = 4,
+            LeftShoulder = 5,
+            RightShoulder = 6,
+            LeftElbow = 7,
+            RightElbow = 8,
+            LeftWrist = 9,
+            RightWrist = 10,
+            LeftHip = 11,
+            RightHip = 12,
+            LeftKnee = 13,
+            RightKnee = 14,
+            LeftAnkle = 15,
+            RightAnkle = 16
         }
 
-        // We use the inverted keypoint index since the image is flipped.
-        var rightHand = Keypoints[(int)KeypointIndex.LeftWrist];
-
-        if (rightHand.Score > keypointScoreThreshold)
+        /// <summary>Capture a single body keypoint.</summary>
+        public class Keypoint
         {
-            rightHandPosition = new Vector2(rightHand.X, rightHand.Y);
-        }
+            public float X;
+            public float Y;
+            public float Score;
 
-        return (leftHandPosition, rightHandPosition);
-    }
-}
-
-/// <summary> Represent a multi-person pose estimation.</summary>
-public class Inference
-{
-    public PlayerPoses PlayerPoses;
-    public readonly Image TheImage;
-
-    public Inference(PlayerPoses playerPoses, Image image)
-    {
-        PlayerPoses = playerPoses;
-        TheImage = image;
-    }
-
-    public override String ToString()
-    {
-        var sb = new System.Text.StringBuilder();
-
-        if (PlayerPoses.Left != null)
-        {
-            sb.AppendLine("Left Player:");
-            var keypoints = PlayerPoses.Left.Keypoints;
-            for (int i = 0; i < keypoints.Length; i++)
+            public Keypoint(float x, float y, float score)
             {
-                var kp = keypoints[i];
-                sb.AppendLine($"  {i}: {kp.X:F2}, {kp.Y:F2}, {kp.Score:F2}");
+                X = x;
+                Y = y;
+                Score = score;
             }
         }
 
-        if (PlayerPoses.Right != null)
+        /// <summary>Represent a body pose of a person.</summary>
+        public class Pose
         {
-            sb.AppendLine("Right Player:");
-            var keypoints = PlayerPoses.Right.Keypoints;
-            for (int i = 0; i < keypoints.Length; i++)
+            public Keypoint[] Keypoints;
+
+            public Pose(Keypoint[] keypoints)
             {
-                var kp = keypoints[i];
-                sb.AppendLine($"  {i}: {kp.X:F2}, {kp.Y:F2}, {kp.Score:F2}");
+                Keypoints = keypoints;
             }
-        }
 
-        return sb.ToString();
-    }
-}
-
-public class PlayerPoses
-{
-    public Pose? Left { get; }
-    public Pose? Right { get; }
-
-    public PlayerPoses(Pose? left, Pose? right)
-    {
-        Left = left;
-        Right = right;
-    }
-}
-
-public static class PoseToPlayerSuppression
-{
-    /// <summary>Compute for each half of the screen which is the dominant pose.</summary>
-    public static PlayerPoses Apply(
-        ICollection<Pose> poses,
-        float keypointScoreThreshold
-    )
-    {
-        if (poses.Count == 0)
-        {
-            return new PlayerPoses(null, null);
-        }
-
-        var leftHalfPoses = new List<ScoredPose>();
-        var rightHalfPoses = new List<ScoredPose>();
-
-        foreach (var pose in poses)
-        {
-            var poseCenter = ComputePoseCenter(pose, keypointScoreThreshold);
-            if (poseCenter.HasValue)
+            public (Vector2?, Vector2?) MaybeLeftRightHandPositions(
+                float keypointScoreThreshold
+            )
             {
-                var poseScore = ComputePoseScore(pose, keypointScoreThreshold);
-                var scoredPose = new ScoredPose(pose, poseScore);
+                Vector2? leftHandPosition = null;
+                Vector2? rightHandPosition = null;
 
-                if (poseCenter.Value.X < 0.5f)
+                // We use the inverted keypoint index since the image is flipped.
+                var leftHand = Keypoints[(int)KeypointIndex.RightWrist];
+
+                if (leftHand.Score > keypointScoreThreshold)
                 {
-                    leftHalfPoses.Add(scoredPose);
+                    leftHandPosition = new Vector2(leftHand.X, leftHand.Y);
+                }
+
+                // We use the inverted keypoint index since the image is flipped.
+                var rightHand = Keypoints[(int)KeypointIndex.LeftWrist];
+
+                if (rightHand.Score > keypointScoreThreshold)
+                {
+                    rightHandPosition = new Vector2(rightHand.X, rightHand.Y);
+                }
+
+                return (leftHandPosition, rightHandPosition);
+            }
+        }
+
+        /// <summary> Represent a multi-person pose estimation.</summary>
+        public class Inference
+        {
+            public PlayerPoses PlayerPoses;
+            public readonly Image TheImage;
+
+            public Inference(PlayerPoses playerPoses, Image image)
+            {
+                PlayerPoses = playerPoses;
+                TheImage = image;
+            }
+
+            public override String ToString()
+            {
+                var sb = new System.Text.StringBuilder();
+
+                if (PlayerPoses.Left != null)
+                {
+                    sb.AppendLine("Left Player:");
+                    var keypoints = PlayerPoses.Left.Keypoints;
+                    for (int i = 0; i < keypoints.Length; i++)
+                    {
+                        var kp = keypoints[i];
+                        sb.AppendLine($"  {i}: {kp.X:F2}, {kp.Y:F2}, {kp.Score:F2}");
+                    }
+                }
+
+                if (PlayerPoses.Right != null)
+                {
+                    sb.AppendLine("Right Player:");
+                    var keypoints = PlayerPoses.Right.Keypoints;
+                    for (int i = 0; i < keypoints.Length; i++)
+                    {
+                        var kp = keypoints[i];
+                        sb.AppendLine($"  {i}: {kp.X:F2}, {kp.Y:F2}, {kp.Score:F2}");
+                    }
+                }
+
+                return sb.ToString();
+            }
+        }
+
+        public class PlayerPoses
+        {
+            public Pose? Left { get; }
+            public Pose? Right { get; }
+
+            public PlayerPoses(Pose? left, Pose? right)
+            {
+                Left = left;
+                Right = right;
+            }
+        }
+
+        public static class PoseToPlayerSuppression
+        {
+            /// <summary>
+            /// Compute for each half of the screen which is the dominant pose.
+            /// </summary>
+            public static PlayerPoses Apply(
+                ICollection<Pose> poses,
+                float keypointScoreThreshold
+            )
+            {
+                if (poses.Count == 0)
+                {
+                    return new PlayerPoses(null, null);
+                }
+
+                var leftHalfPoses = new List<ScoredPose>();
+                var rightHalfPoses = new List<ScoredPose>();
+
+                foreach (var pose in poses)
+                {
+                    var poseCenter = ComputePoseCenter(pose, keypointScoreThreshold);
+                    if (poseCenter.HasValue)
+                    {
+                        var poseScore = ComputePoseScore(pose, keypointScoreThreshold);
+                        var scoredPose = new ScoredPose(pose, poseScore);
+
+                        if (poseCenter.Value.X < 0.5f)
+                        {
+                            leftHalfPoses.Add(scoredPose);
+                        }
+                        else
+                        {
+                            rightHalfPoses.Add(scoredPose);
+                        }
+                    }
+                }
+
+                Pose? leftPose = null;
+                Pose? rightPose = null;
+
+                if (leftHalfPoses.Count > 0)
+                {
+                    var bestLeft = leftHalfPoses.OrderByDescending(p => p.Score).First();
+                    leftPose = bestLeft.Pose;
+                }
+
+                if (rightHalfPoses.Count > 0)
+                {
+                    var bestRight = (
+                        rightHalfPoses
+                            .OrderByDescending(p => p.Score)
+                            .First()
+                    );
+                    rightPose = bestRight.Pose;
+                }
+
+                return new PlayerPoses(leftPose, rightPose);
+            }
+
+            /// <summary>
+            /// Compute the center position of a pose based on confident keypoints.
+            /// </summary>
+            private static (float X, float Y)? ComputePoseCenter(
+                Pose pose,
+                float keypointScoreThreshold
+            )
+            {
+                if (pose.Keypoints.Length == 0)
+                    return null;
+
+                float sumX = 0f;
+                float sumY = 0f;
+                int count = 0;
+
+                foreach (var kp in pose.Keypoints)
+                {
+                    if (kp.Score >= keypointScoreThreshold)
+                    {
+                        sumX += kp.X;
+                        sumY += kp.Y;
+                        count++;
+                    }
+                }
+
+                return count > 0 ? (sumX / count, sumY / count) : null;
+            }
+
+            /// <summary>
+            /// Compute a pose confidence score from its confident keypoints.
+            /// </summary>
+            private static float ComputePoseScore(
+                Pose pose,
+                float keypointScoreThreshold
+            )
+            {
+                if (pose.Keypoints.Length == 0)
+                {
+                    return 0f;
+                }
+
+                float sum = 0f;
+                float count = 0f;
+
+                foreach (var kp in pose.Keypoints)
+                {
+                    if (kp.Score >= keypointScoreThreshold)
+                    {
+                        sum += kp.Score;
+                        count++;
+                    }
+                }
+
+                return count > 0f ? sum / count : 0f;
+            }
+
+            private sealed class ScoredPose
+            {
+                public Pose Pose { get; }
+                public float Score { get; }
+
+                public ScoredPose(Pose pose, float score)
+                {
+                    Pose = pose;
+                    Score = score;
+                }
+            }
+        }
+
+        /// <summary>Represent a position with timestamp for speed calculation.</summary>
+        public class TimestampedPosition
+        {
+            public Vector2 Position { get; }
+            public float Time { get; }
+
+            public TimestampedPosition(Vector2 position, float time)
+            {
+                Position = position;
+                Time = time;
+            }
+        }
+
+        public class InertialVelocity
+        {
+            private float _v;
+            private readonly float _tau;
+
+            public float Get()
+            {
+                return _v;
+            }
+
+            public InertialVelocity()
+            {
+                _tau = 0.5f;  // The higher, the less inertia.
+                _v = 0f;
+            }
+
+            public void Update(float velocity, float delta)
+            {
+                if (delta <= 0f)
+                {
+                    return;
+                }
+
+                float alpha = (_tau > 0f)
+                    ? 1f - (float)Math.Exp(-delta / _tau)
+                    : 1f;
+
+                _v += alpha * (velocity - _v);
+            }
+        }
+
+        public class Smoother
+        {
+            private Vector2? _lastObservedPosition;
+            private Vector2? _smoothedPosition;
+            private float _alpha = 0.0f;
+            private float _timeSinceLastObservation = 0.0f;
+            private CircularBuffer<TimestampedPosition> _positionHistory = (
+                new CircularBuffer<TimestampedPosition>(5)
+            );
+
+            private float _currentTime = 0.0f;
+
+            // NOTE (mristin):
+            // We decay alpha by this amount per second.
+            private const float _alphaDecayRate = 0.7f;
+
+            // NOTE (mristin):
+            // This determines the smoothing factor of the movement
+            // (0 = instant, 1 = no movement).
+            private const float _smoothingFactor = 0.3f;
+
+            private readonly InertialVelocity _inertialVelocity = new InertialVelocity();
+
+            public void Observe(Vector2 position, float delta)
+            {
+                _currentTime += delta;
+                _lastObservedPosition = position;
+                _alpha = 1.0f;
+                _timeSinceLastObservation = 0.0f;
+
+                if (_smoothedPosition.HasValue)
+                {
+                    // NOTE (mristin):
+                    // We smooth the movement using linear interpolation.
+                    _smoothedPosition = _smoothedPosition.Value.Lerp(
+                        position,
+                        1.0f - _smoothingFactor
+                    );
                 }
                 else
                 {
-                    rightHalfPoses.Add(scoredPose);
+                    // NOTE (mristin):
+                    // If this is the first observation, we set it directly.
+                    _smoothedPosition = position;
                 }
-            }
-        }
 
-        Pose? leftPose = null;
-        Pose? rightPose = null;
-
-        if (leftHalfPoses.Count > 0)
-        {
-            var bestLeft = leftHalfPoses.OrderByDescending(p => p.Score).First();
-            leftPose = bestLeft.Pose;
-        }
-
-        if (rightHalfPoses.Count > 0)
-        {
-            var bestRight = rightHalfPoses.OrderByDescending(p => p.Score).First();
-            rightPose = bestRight.Pose;
-        }
-
-        return new PlayerPoses(leftPose, rightPose);
-    }
-
-    /// <summary>Compute the center position of a pose based on confident keypoints.</summary>
-    private static (float X, float Y)? ComputePoseCenter(Pose pose, float keypointScoreThreshold)
-    {
-        if (pose.Keypoints.Length == 0)
-            return null;
-
-        float sumX = 0f;
-        float sumY = 0f;
-        int count = 0;
-
-        foreach (var kp in pose.Keypoints)
-        {
-            if (kp.Score >= keypointScoreThreshold)
-            {
-                sumX += kp.X;
-                sumY += kp.Y;
-                count++;
-            }
-        }
-
-        return count > 0 ? (sumX / count, sumY / count) : null;
-    }
-
-    /// <summary>Compute a pose confidence score from its confident keypoints.</summary>
-    private static float ComputePoseScore(Pose pose, float keypointScoreThreshold)
-    {
-        if (pose.Keypoints.Length == 0)
-        {
-            return 0f;
-        }
-
-        float sum = 0f;
-        float count = 0f;
-
-        foreach (var kp in pose.Keypoints)
-        {
-            if (kp.Score >= keypointScoreThreshold)
-            {
-                sum += kp.Score;
-                count++;
-            }
-        }
-
-        return count > 0f ? sum / count : 0f;
-    }
-
-    private sealed class ScoredPose
-    {
-        public Pose Pose { get; }
-        public float Score { get; }
-
-        public ScoredPose(Pose pose, float score)
-        {
-            Pose = pose;
-            Score = score;
-        }
-    }
-}
-
-/// <summary>Represent a position with timestamp for speed calculation.</summary>
-public class TimestampedPosition
-{
-    public Vector2 Position { get; }
-    public float Time { get; }
-
-    public TimestampedPosition(Vector2 position, float time)
-    {
-        Position = position;
-        Time = time;
-    }
-}
-
-public class InertialVelocity
-{
-    private float _v;
-    private readonly float _tau;
-
-    public float Get()
-    {
-        return _v;
-    }
-
-    public InertialVelocity()
-    {
-        _tau = 0.5f;  // The higher, the less inertia.
-        _v = 0f;
-    }
-
-    public void Update(float velocity, float delta)
-    {
-        if (delta <= 0f)
-        {
-            return;
-        }
-
-        float alpha = (_tau > 0f)
-            ? 1f - (float)Math.Exp(-delta / _tau)
-            : 1f;
-
-        _v += alpha * (velocity - _v);
-    }
-}
-
-public class SmoothMover
-{
-    private Vector2? _lastObservedPosition;
-    private Vector2? _smoothedPosition;
-    private float _alpha = 0.0f;
-    private float _timeSinceLastObservation = 0.0f;
-    private CircularBuffer<TimestampedPosition> _positionHistory = (
-        new CircularBuffer<TimestampedPosition>(5)
-    );
-
-    private float _currentTime = 0.0f;
-
-    // NOTE (mristin):
-    // We decay alpha by this amount per second.
-    private const float _alphaDecayRate = 0.7f;
-
-    // NOTE (mristin):
-    // This determines the smoothing factor of the movement
-    // (0 = instant, 1 = no movement).
-    private const float _smoothingFactor = 0.3f;
-
-    private readonly InertialVelocity _inertialVelocity = new InertialVelocity();
-
-    public void Observe(Vector2 position, float delta)
-    {
-        _currentTime += delta;
-        _lastObservedPosition = position;
-        _alpha = 1.0f;
-        _timeSinceLastObservation = 0.0f;
-
-        if (_smoothedPosition.HasValue)
-        {
-            // NOTE (mristin):
-            // We smooth the movement using linear interpolation.
-            _smoothedPosition = _smoothedPosition.Value.Lerp(
-                position,
-                1.0f - _smoothingFactor
-            );
-        }
-        else
-        {
-            // NOTE (mristin):
-            // If this is the first observation, we set it directly.
-            _smoothedPosition = position;
-        }
-
-        _positionHistory.Add(
-            new TimestampedPosition(_smoothedPosition.Value, _currentTime)
-        );
-
-        _inertialVelocity.Update(EstimateVerticalSpeed() ?? 0.0f, delta);
-    }
-
-    public (Vector2? position, float alpha, float verticalSpeed) Get()
-    {
-        return (_smoothedPosition, _alpha, _inertialVelocity.Get());
-    }
-
-    public void UpdateWithoutObservation(float delta)
-    {
-        _currentTime += delta;
-
-        if (_lastObservedPosition.HasValue)
-        {
-            _timeSinceLastObservation += delta;
-
-            if (_timeSinceLastObservation >= 0.2f)
-            {
-                _alpha = Math.Max(0.0f, _alpha - _alphaDecayRate * delta);
-
-                // NOTE (mristin):
-                // If alpha reaches 0, we can clear the position.
-                if (_alpha <= 0.0f)
-                {
-                    _smoothedPosition = null;
-                    _lastObservedPosition = null;
-                    _positionHistory.Clear();
-                }
-            }
-        }
-
-        _inertialVelocity.Update(EstimateVerticalSpeed() ?? 0.0f, delta);
-    }
-
-    /// <summary>
-    /// Estimate vertical speed for rowing simulation based on position history.
-    /// </summary>
-    /// <returns>
-    /// Vertical speed in pixels per second, or null if insufficient data.
-    /// </returns>
-    public float? EstimateVerticalSpeed()
-    {
-        if (_positionHistory.Count < 2)
-        {
-            return null;
-        }
-
-        float totalVerticalDisplacement = 0f;
-        float totalTime = 0f;
-
-        for (int i = 1; i < _positionHistory.Count; i++)
-        {
-            var previous = _positionHistory[i - 1];
-            var current = _positionHistory[i];
-
-            float timeDelta = current.Time - previous.Time;
-            if (timeDelta > 0f)
-            {
-                totalVerticalDisplacement += Math.Abs(
-                    current.Position.Y - previous.Position.Y
+                _positionHistory.Add(
+                    new TimestampedPosition(_smoothedPosition.Value, _currentTime)
                 );
-                totalTime += timeDelta;
+
+                _inertialVelocity.Update(EstimateVerticalSpeed() ?? 0.0f, delta);
+            }
+
+            public (Vector2? position, float alpha, float verticalSpeed) Get()
+            {
+                return (_smoothedPosition, _alpha, _inertialVelocity.Get());
+            }
+
+            public void UpdateWithoutObservation(float delta)
+            {
+                _currentTime += delta;
+
+                if (_lastObservedPosition.HasValue)
+                {
+                    _timeSinceLastObservation += delta;
+
+                    if (_timeSinceLastObservation >= 0.2f)
+                    {
+                        _alpha = Math.Max(0.0f, _alpha - _alphaDecayRate * delta);
+
+                        // NOTE (mristin):
+                        // If alpha reaches 0, we can clear the position.
+                        if (_alpha <= 0.0f)
+                        {
+                            _smoothedPosition = null;
+                            _lastObservedPosition = null;
+                            _positionHistory.Clear();
+                        }
+                    }
+                }
+
+                _inertialVelocity.Update(EstimateVerticalSpeed() ?? 0.0f, delta);
+            }
+
+            /// <summary>
+            /// Estimate vertical speed for rowing simulation based on position history.
+            /// </summary>
+            /// <returns>
+            /// Vertical speed in pixels per second, or null if insufficient data.
+            /// </returns>
+            public float? EstimateVerticalSpeed()
+            {
+                if (_positionHistory.Count < 2)
+                {
+                    return null;
+                }
+
+                float totalVerticalDisplacement = 0f;
+                float totalTime = 0f;
+
+                for (int i = 1; i < _positionHistory.Count; i++)
+                {
+                    var previous = _positionHistory[i - 1];
+                    var current = _positionHistory[i];
+
+                    float timeDelta = current.Time - previous.Time;
+                    if (timeDelta > 0f)
+                    {
+                        totalVerticalDisplacement += Math.Abs(
+                            current.Position.Y - previous.Position.Y
+                        );
+                        totalTime += timeDelta;
+                    }
+                }
+
+                return totalTime > 0f ? totalVerticalDisplacement / totalTime : 0f;
             }
         }
 
-        return totalTime > 0f ? totalVerticalDisplacement / totalTime : 0f;
-    }
-}
+    }  // namespace Impl
+
+}  // namespace ErgoSkiing
 
 public partial class ErgoSki : Node2D
 {
     [Signal]
-    public delegate void PlayerSpeedUpdatedEventHandler(string player, string hand, float normalizedSpeed);
+    public delegate void PlayerSpeedUpdatedEventHandler(
+        string player,
+        string hand, float
+        normalizedSpeed
+    );
 
     private Label? _status;
     private CameraTexture? _cameraTexture;
@@ -439,7 +470,7 @@ public partial class ErgoSki : Node2D
     private System.Threading.Thread? _inferenceThread;
     private InferenceSession? _inferenceSession;
     private readonly object _latestInferenceLock = new object();
-    private Inference? _latestInference;
+    private ErgoSkiing.Impl.Inference? _latestInference;
 
     private const float _keypointScoreThreshold = 0.8f;
 
@@ -449,12 +480,25 @@ public partial class ErgoSki : Node2D
     private Fireball _playerBFireballLeft = null!;
     private Fireball _playerBFireballRight = null!;
 
-    private SmoothMover _playerAFireballLeftSmoother = new SmoothMover();
-    private SmoothMover _playerAFireballRightSmoother = new SmoothMover();
-    private SmoothMover _playerBFireballLeftSmoother = new SmoothMover();
-    private SmoothMover _playerBFireballRightSmoother = new SmoothMover();
+    private ErgoSkiing.Impl.Smoother _playerALeftSmoother = (
+        new ErgoSkiing.Impl.Smoother()
+    );
+    private ErgoSkiing.Impl.Smoother _playerARightSmoother = (
+        new ErgoSkiing.Impl.Smoother()
+    );
+    private ErgoSkiing.Impl.Smoother _playerBLeftSmoother = (
+        new ErgoSkiing.Impl.Smoother()
+    );
+    private ErgoSkiing.Impl.Smoother _playerBRightSmoother = (
+        new ErgoSkiing.Impl.Smoother()
+    );
 
-    private readonly Dictionary<(string player, string hand), float> _lastEmittedSpeeds = new Dictionary<(string, string), float>();
+    private readonly Dictionary<
+        (string player, string hand),
+        float
+    > _lastEmittedSpeeds = (
+        new Dictionary<(string, string), float>()
+    );
 
     public override void _Ready()
     {
@@ -762,11 +806,13 @@ public partial class ErgoSki : Node2D
             int numPersons = dims[1];
             int numKeypoints = dims[2];
 
-            ICollection<Pose> poses = new List<Pose>();
+            ICollection<ErgoSkiing.Impl.Pose> poses = new List<ErgoSkiing.Impl.Pose>();
 
             for (int p = 0; p < numPersons; p++)
             {
-                Keypoint[] keypoints = new Keypoint[numKeypoints];
+                ErgoSkiing.Impl.Keypoint[] keypoints = (
+                    new ErgoSkiing.Impl.Keypoint[numKeypoints]
+                );
 
                 int validKeypoints = 0;
 
@@ -781,23 +827,23 @@ public partial class ErgoSki : Node2D
                         validKeypoints += 1;
                     }
 
-                    keypoints[k] = new Keypoint(x, y, score);
+                    keypoints[k] = new ErgoSkiing.Impl.Keypoint(x, y, score);
                 }
 
                 // NOTE (mristin):
                 // We accept only poses with sufficient keypoints.
                 if (validKeypoints > 4)
                 {
-                    poses.Add(new Pose(keypoints));
+                    poses.Add(new ErgoSkiing.Impl.Pose(keypoints));
                 }
             }
 
-            var playerPoses = PoseToPlayerSuppression.Apply(
+            var playerPoses = ErgoSkiing.Impl.PoseToPlayerSuppression.Apply(
                 poses,
                 _keypointScoreThreshold
             );
 
-            Inference inference = new Inference(playerPoses, frame);
+            var inference = new ErgoSkiing.Impl.Inference(playerPoses, frame);
             lock (_latestInferenceLock)
             {
                 _latestInference = inference;
@@ -813,7 +859,7 @@ public partial class ErgoSki : Node2D
 
     public override void _Process(double delta)
     {
-        Inference? inference = null;
+        ErgoSkiing.Impl.Inference? inference = null;
 
         lock (_latestInferenceLock)
         {
@@ -824,17 +870,17 @@ public partial class ErgoSki : Node2D
             }
         }
 
-        Vector2? playerAFireballLeftPosition = null;
-        Vector2? playerAFireballRightPosition = null;
+        Vector2? playerALeftPosition = null;
+        Vector2? playerARightPosition = null;
 
-        Vector2? playerBFireballLeftPosition = null;
-        Vector2? playerBFireballRightPosition = null;
+        Vector2? playerBLeftPosition = null;
+        Vector2? playerBRightPosition = null;
 
         if (inference != null)
         {
             if (inference.PlayerPoses.Left != null)
             {
-                (playerAFireballLeftPosition, playerAFireballRightPosition) = (
+                (playerALeftPosition, playerARightPosition) = (
                     inference
                         .PlayerPoses
                         .Left
@@ -844,7 +890,7 @@ public partial class ErgoSki : Node2D
 
             if (inference.PlayerPoses.Right != null)
             {
-                (playerBFireballLeftPosition, playerBFireballRightPosition) = (
+                (playerBLeftPosition, playerBRightPosition) = (
                     inference
                         .PlayerPoses
                         .Right
@@ -860,35 +906,35 @@ public partial class ErgoSki : Node2D
                 fireball,
                 player,
                 hand
-            ) in new (Vector2?, SmoothMover, Fireball, string, string)[]
+            ) in new (Vector2?, ErgoSkiing.Impl.Smoother, Fireball, string, string)[]
             {
                 (
-                    playerAFireballLeftPosition,
-                    _playerAFireballLeftSmoother,
+                    playerALeftPosition,
+                    _playerALeftSmoother,
                     _playerAFireballLeft,
-                    Player.A,
-                    Hand.Left
+                    ErgoSkiing.Player.A,
+                    ErgoSkiing.Hand.Left
                 ),
                 (
-                    playerAFireballRightPosition,
-                    _playerAFireballRightSmoother,
+                    playerARightPosition,
+                    _playerARightSmoother,
                     _playerAFireballRight,
-                    Player.A,
-                    Hand.Right
+                    ErgoSkiing.Player.A,
+                    ErgoSkiing.Hand.Right
                 ),
                 (
-                    playerBFireballLeftPosition,
-                    _playerBFireballLeftSmoother,
+                    playerBLeftPosition,
+                    _playerBLeftSmoother,
                     _playerBFireballLeft,
-                    Player.B,
-                    Hand.Left
+                    ErgoSkiing.Player.B,
+                    ErgoSkiing.Hand.Left
                 ),
                 (
-                    playerBFireballRightPosition,
-                    _playerBFireballRightSmoother,
+                    playerBRightPosition,
+                    _playerBRightSmoother,
                     _playerBFireballRight,
-                    Player.B,
-                    Hand.Right
+                    ErgoSkiing.Player.B,
+                    ErgoSkiing.Hand.Right
                 )
             }
         )
