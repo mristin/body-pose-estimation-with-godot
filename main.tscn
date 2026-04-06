@@ -38,4 +38,22 @@ Color = Color(0, 0.06666667, 1, 1)
 
 [node name="PositionBRight" parent="." unique_id=745210441 instance=ExtResource("4_1bvp3")]
 position = Vector2(1006, 120)
-Color = Color(0, 0, 1, 1)
+
+[node name="TextA" type="TextEdit" parent="." unique_id=456086818]
+offset_left = 115.0
+offset_top = 280.0
+offset_right = 532.468
+offset_bottom = 344.69424
+theme_override_colors/background_color = Color(1, 0, 0, 0.85490197)
+theme_override_colors/current_line_color = Color(1, 0, 0, 1)
+theme_override_font_sizes/font_size = 20
+placeholder_text = "A: Write something"
+
+[node name="TextB" type="TextEdit" parent="." unique_id=1308172036]
+offset_left = 609.0
+offset_top = 280.0
+offset_right = 1026.468
+offset_bottom = 344.69424
+theme_override_colors/background_color = Color(0, 0, 1, 0.5647059)
+theme_override_font_sizes/font_size = 20
+placeholder_text = "B: Write something"
