@@ -272,6 +272,37 @@ public class TimestampedPosition
     }
 }
 
+public class InertialVelocity
+{
+    private float _v;
+    private readonly float _tau;
+
+    public float Get()
+    {
+        return _v;
+    }
+
+    public InertialVelocity()
+    {
+        _tau = 0.5f;  // The higher, the less inertia.
+        _v = 0f;
+    }
+
+    public void Update(float velocity, float delta)
+    {
+        if (delta <= 0f)
+        {
+            return;
+        }
+
+        float alpha = (_tau > 0f)
+            ? 1f - (float)Math.Exp(-delta / _tau)
+            : 1f;
+
+        _v += alpha * (velocity - _v);
+    }
+}
+
 public class SmoothMover
 {
     private Vector2? _lastObservedPosition;
@@ -292,6 +323,8 @@ public class SmoothMover
     // This determines the smoothing factor of the movement
     // (0 = instant, 1 = no movement).
     private const float _smoothingFactor = 0.3f;
+
+    private readonly InertialVelocity _inertialVelocity = new InertialVelocity();
 
     public void Observe(Vector2 position, float delta)
     {
@@ -319,11 +352,13 @@ public class SmoothMover
         _positionHistory.Add(
             new TimestampedPosition(_smoothedPosition.Value, _currentTime)
         );
+
+        _inertialVelocity.Update(EstimateVerticalSpeed() ?? 0.0f, delta);
     }
 
     public (Vector2? position, float alpha, float verticalSpeed) Get()
     {
-        return (_smoothedPosition, _alpha, EstimateVerticalSpeed() ?? 0.0f);
+        return (_smoothedPosition, _alpha, _inertialVelocity.Get());
     }
 
     public void UpdateWithoutObservation(float delta)
@@ -348,6 +383,8 @@ public class SmoothMover
                 }
             }
         }
+
+        _inertialVelocity.Update(EstimateVerticalSpeed() ?? 0.0f, delta);
     }
 
     /// <summary>
@@ -407,10 +444,10 @@ public partial class ErgoSki : Node2D
     private const float _keypointScoreThreshold = 0.8f;
 
     private PackedScene? _fireballScene;
-    private Fireball? _playerAFireballLeft;
-    private Fireball? _playerAFireballRight;
-    private Fireball? _playerBFireballLeft;
-    private Fireball? _playerBFireballRight;
+    private Fireball _playerAFireballLeft = null!;
+    private Fireball _playerAFireballRight = null!;
+    private Fireball _playerBFireballLeft = null!;
+    private Fireball _playerBFireballRight = null!;
 
     private SmoothMover _playerAFireballLeftSmoother = new SmoothMover();
     private SmoothMover _playerAFireballRightSmoother = new SmoothMover();
@@ -866,7 +903,7 @@ public partial class ErgoSki : Node2D
                 smoother.UpdateWithoutObservation((float)delta);
             }
 
-            var (smoothedPosition, alpha, verticalSpeed) = smoother.Get();
+            var (smoothedPosition, alpha, speed) = smoother.Get();
 
             if (smoothedPosition.HasValue)
             {
@@ -890,7 +927,7 @@ public partial class ErgoSki : Node2D
                 }
                 fireball.Modulate = new Color(1.0f, 1.0f, 1.0f, alpha);
 
-                fireball.UpdateWithSpeed(verticalSpeed);
+                fireball.UpdateWithSpeed(speed);
             }
             else
             {
@@ -899,16 +936,16 @@ public partial class ErgoSki : Node2D
 
             var key = (player, hand);
             if (
-                !_lastEmittedSpeeds.TryGetValue(key, out var lastVerticalSpeed)
-                || Math.Abs(lastVerticalSpeed - verticalSpeed) > 0.001f
+                !_lastEmittedSpeeds.TryGetValue(key, out var lastSpeed)
+                || Math.Abs(lastSpeed - speed) > 0.001f
             )
             {
-                _lastEmittedSpeeds[key] = verticalSpeed;
+                _lastEmittedSpeeds[key] = speed;
                 EmitSignal(
                     SignalName.PlayerSpeedUpdated,
                     player,
                     hand,
-                    verticalSpeed
+                    speed
                 );
             }
         }
