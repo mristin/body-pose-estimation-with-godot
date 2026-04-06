@@ -7,7 +7,7 @@ on:
       - main
 
 jobs:
-  format:
+  run:
     runs-on: ubuntu-latest
 
     steps:
@@ -24,3 +24,6 @@ jobs:
 
       - name: Verify formatting
         run: dotnet format --verify-no-changes BodyPoseEstimationWithGodot.sln
+
+      - name: Build
+        run: dotnet build
