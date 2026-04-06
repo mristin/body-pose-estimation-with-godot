@@ -1,0 +1,29 @@
+[gd_scene format=3 uid="uid://dhthdj5aft7vb"]
+
+[ext_resource type="Shader" uid="uid://dy4pugovk82ox" path="res://ErgoSki/Fireball/fireball.gdshader" id="1_vhtwv"]
+[ext_resource type="Script" uid="uid://dkd1dntgcxrk1" path="res://ErgoSki/Fireball/Fireball.cs" id="2_2eckv"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_olwj8"]
+resource_local_to_scene = true
+shader = ExtResource("1_vhtwv")
+shader_parameter/time_scale = 1.0
+shader_parameter/core_color = Color(1, 1, 0.7, 1)
+shader_parameter/glow_color = Color(1, 0.6, 0.2, 1)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_sf4mh"]
+resource_local_to_scene = true
+shader = ExtResource("1_vhtwv")
+shader_parameter/time_scale = 1.0
+shader_parameter/core_color = Color(1, 1, 0.7, 1)
+shader_parameter/glow_color = Color(1, 0.6, 0.2, 1)
+
+[node name="Fireball" type="Node2D" unique_id=394448141]
+material = SubResource("ShaderMaterial_olwj8")
+script = ExtResource("2_2eckv")
+
+[node name="ColorRect" type="ColorRect" parent="." unique_id=406806902]
+material = SubResource("ShaderMaterial_sf4mh")
+offset_left = -35.0
+offset_top = -35.0
+offset_right = 35.0
+offset_bottom = 35.0
